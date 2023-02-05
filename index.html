@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VueMini</title>
+</head>
+
+<body>
+  <div id="app">
+    <h1>VueMini</h1>
+  </div>
+  <script type="module">
+    import VueMini from './core/index.js'
+    window.test = new VueMini({
+      a: 1
+    })
+    window.test2 = new VueMini({
+      a: 2
+    })
+  </script>
+</body>
+
+</html>
