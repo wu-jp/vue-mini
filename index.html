@@ -15,10 +15,25 @@
   <script type="module">
     import VueMini from './core/index.js'
     window.test = new VueMini({
-      a: 1
-    })
-    window.test2 = new VueMini({
-      a: 2
+      el: 'app',
+      data: {
+        name: 'wuyi',
+        age: 18,
+        obj: {
+          x: 1,
+          y: 2,
+        },
+        list: [
+          {
+            name: '小鱼',
+            age: 1
+          },
+          {
+            name: '小虾',
+            age: 2
+          }
+        ]
+      }
     })
   </script>
 </body>
