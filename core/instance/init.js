@@ -1,3 +1,4 @@
+import { mount } from "./mount.js"
 import { constructProxy } from "./proxy.js"
 
 let uid = 0
@@ -14,5 +15,9 @@ export function initMixin(VueMini) {
     // 初始化methods方法
     // 初始化computed方法
     // 初始化el并挂载
+    if (options && options.el) {
+      const domRoot = document.getElementById(options.el)
+      mount(vm, domRoot)
+    }
   }
 }
