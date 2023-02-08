@@ -1,23 +1,35 @@
-import { mount } from "./mount.js"
-import { constructProxy } from "./proxy.js"
+import { mount } from "./mount.js";
+import { constructProxy } from "./proxy.js";
 
-let uid = 0
-export function initMixin(VueMini) {
-  VueMini.prototype._init = function (options) {
-    const vm = this
-    vm.uid = uid++
-    vm._isVueMini = true
-    // 初始化data
+let uid = 0;
+
+export function initMixin(Due) {
+  Due.prototype._init = function (options) {
+    const vm = this;
+    vm.uid = uid++;
+    vm._isVue = true;
     if (options && options.data) {
-      vm._data = constructProxy(vm, options.data, '')
+      vm._data = constructProxy(vm, options.data, "");
     }
-    // 初始化created方法
-    // 初始化methods方法
-    // 初始化computed方法
-    // 初始化el并挂载
+    if (options && options.created) {
+      vm.created = options.created;
+    }
+    if (options && options.methods) {
+      vm._methods = options.methods;
+      for (let temp in options.methods) {
+        vm[temp] = options.methods[temp];
+      }
+    }
+    if (options && options.computed) {
+      vm._computed = options.computed;
+      for (let temp in options.computed) {
+        vm[temp] = options.computed[temp];
+      }
+    }
     if (options && options.el) {
-      const domRoot = document.getElementById(options.el)
-      mount(vm, domRoot)
+      let rootDom = document.getElementById(options.el);
+      mount(vm, rootDom);
     }
+
   }
 }

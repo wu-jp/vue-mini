@@ -1,3 +1,3 @@
-import VueMini from "./instance/index.js";
+import Due from "./instance/index.js";
 
-export default VueMini
+export default Due;
