@@ -622,5 +622,227 @@ function effect(fn) {
 
 ## 避免无限递归循环
 
+看一个例子：
+
+```js
+const data = { foo: 1 }
+const obj = new Proxy(data, { /* ... */ })
+
+effect(() => obj.foo ++ )
+```
+
+改造成会导致栈溢出：
+
+``` js
+Uncaught RangeError: Maximum call stack size exceeded
+```
+
+`obj.foo++` 这个操作可以分开来看：
+
+```js
+effect(() => {
+  obj.foo = obj.foo + 1
+})
+```
+
+在该语句中，即会读取obj.foo，又会设置obj.foo 的值；首先读取obj.foo 的值，这会触发 track 操作，将当前副作用函数收集到“桶”中，接着将其加 1 后再赋值给 obj.foo，此时会触发 trigger 操作，即把“桶”中的副作用函数取出并执行。但问题是该副作用函数正在执行中，还没有执行完毕，就要开始下一次的执行。这样会导致无限递归地调用自己，于是就产生了栈溢出。
+
+那么如何解决这个问题呢？
+
+我们可以在 trigger 动作发生时增加守卫条件：**如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行**，如以下代码所示：
+
+```js
+// 在set 拦截函数内调用 trigger 函数触发变化
+function trigger(target, key) {
+  const depsMap = bucket.get(target)
+
+  if (!depsMap) return
+
+  const effects = depsMap.get(key)
+  const effectsToRun = new Set()
+
+  effects && effects.forEach(effectFn => {
+    // 如果 trigger 触发执行的副作用函数和与当前执行的副作用函数相同，则不触发
+    if (effectFn !== activeEffect) {
+      effectsToRun.add(effectFn)
+    }
+  })
+
+  effectsToRun.forEach(effectFn => effectFn())
+}
+```
 
 ## 调度执行
+
+什么是可调度性：指的是**当 trigger 动作触发副作用函数重新执行时，有能力决定副作用函数执行的时机、次数以及方式**
+
+### 执行时机
+
+为effect 函数设计一个选项参数options，允许用户指定调度器：
+
+```js
+effect(
+  () => {
+    console.log(obj.foo)
+  },
+  // options
+  {
+    // 调度器函数 参数 fn 为 trigger 动作触发的副作用函数
+    scheduler(fn) {
+      // ...
+    }
+  }
+)
+```
+
+```js
+// effect 函数用于注册副作用函数，将副作用函数 fn 赋值给 activeEffect
+function effect(fn, options = {}) {
+  const effectFn = () => {
+    // 清除
+    cleanup(effectFn)
+    // 当调用 effect 注册副作用函数时，将副作用函数赋值给activeEffect
+    activeEffect = effectFn
+    // 在调用副作用函数之前将副作用函数压入栈中
+    effectStack.push(effectFn)
+    fn()
+    // 在副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
+    effectStack.pop()
+    activeEffect = effectStack[effectStack.length - 1]
+  }
+  // 将 options 挂载到 effectFn 上
+  effectFn.options = options
+  effectFn.deps = []
+  effectFn()
+}
+```
+
+```js
+// 在set 拦截函数内调用 trigger 函数触发变化
+function trigger(target, key) {
+  const depsMap = bucket.get(target)
+
+  if (!depsMap) return
+
+  const effects = depsMap.get(key)
+  const effectsToRun = new Set()
+
+  effects && effects.forEach(effectFn => {
+    // 如果 trigger 触发执行的副作用函数和与当前执行的副作用函数相同，则不触发
+    if (effectFn !== activeEffect) {
+      effectsToRun.add(effectFn)
+    }
+  })
+
+  effectsToRun.forEach(effectFn => {
+    // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
+    if(effectFn.options.scheduler) {
+      effectFn.options.scheduler(effectFn)
+    }else {
+      effectFn()
+    }
+  })
+}
+```
+
+现在用户可以自己决定副作用函数调用的时机：
+```js
+effect(
+  () => {
+    console.log(obj.foo)
+  },
+  // options
+  {
+    // 调度器函数 参数 fn 为 trigger 动作触发的副作用函数
+    scheduler(fn) {
+      // 将副作用函数放到宏任务队列中执行
+      setTimeout(fn)
+    }
+  }
+)
+```
+
+### 执行次数
+
+看一个例子：
+
+```js
+const data = { foo: 1 }
+const obj = new Proxy(data, { /* ... */ })
+
+effect(() => {
+  console.log(obj.foo)
+})
+
+obj.foo()
+obj.foo()
+```
+
+输出结果：
+```js
+1
+2
+3
+```
+
+字段 obj.foo 的值一定会从 1 自增到 3，2 只是它的过渡状态。如果我们只关心最终结果而不关心过程，那么执行三次打印操作是多余的，我们期望的打印结果是：
+
+```js
+1
+3
+```
+
+功能实现：
+
+```js
+// 定义一个任务队列
+const jobQueue = new Set()
+// 使用 Promise.resolve() 创建一个promise实例，我们用它将一个任务添加到微队列
+const p = Promise.resolve()
+// 一个标识代表是否在刷新队列
+let isFlushing = false
+function flushJob() {
+  // 如果正在刷新，则什么都不做
+  if(isFlushing) return
+
+  // 代表正在刷新
+  isFlushing = true
+
+  // 在微任务队列中刷新 jobQueue 任务
+  p.then(() => {
+    jobQueue.forEach(job => job())
+  }).finally(() => {
+    // 结束后重置 isFlusing
+    isFlushing = false
+  })
+}
+
+effect(
+  () => {
+    console.log(obj.foo)
+  },
+  // options
+  {
+    // 调度器函数 参数 fn 为 trigger 动作触发的副作用函数
+    scheduler(fn) {
+      // 每次调度时，将副作用函数添加到 jobQueue 队列中
+      jobQueue.add(fn)
+      flushJob()
+    }
+  }
+)
+
+obj.foo()
+obj.foo()
+```
+
+观察上面的代码，首先，我们定义了一个任务队列 jobQueue，它是一个 Set 数据结构，目的是利用 Set 数据结构的自动去重能力。接着我们看调度器scheduler 的实现，在每次调度执行时，先将当前副作用函数添加到jobQueue 队列中，再调用 flushJob 函数刷新队列。然后我们把目光转向flushJob 函数，该函数通过 isFlushing 标志判断是否需要执行，只有当其为false 时才需要执行，而一旦 flushJob 函数开始执行，isFlushing 标志就会设置为 true，意思是无论调用多少次 flushJob 函数，在一个周期内都只会执行一次。需要注意的是，在 flushJob 内通过 p.then 将一个函数添加到微任务队列，在微任务队列内完成对 jobQueue 的遍历执行。
+
+整段代码的效果是，连续对 obj.foo 执行两次自增操作，会同步且连续地执行两次 scheduler 调度函数，这意味着同一个副作用函数会被jobQueue.add(fn) 语句添加两次，但由于 Set 数据结构的去重能力，最终jobQueue 中只会有一项，即当前副作用函数。类似地，flushJob 也会同步且连续地执行两次，但由于 isFlushing 标志的存在，实际上 flushJob 函数在一个事件循环内只会执行一次，即在微任务队列内执行一次。当微任务队列开始执行时，就会遍历 jobQueue 并执行里面存储的副作用函数。由于此时jobQueue 队列内只有一个副作用函数，所以只会执行一次，并且当它执行时，字段 obj.foo 的值已经是 3 了，这样我们就实现了期望的输出：
+
+```js
+1
+3
+```
+
+## 4.8. 计算属性 computed 与 lazy

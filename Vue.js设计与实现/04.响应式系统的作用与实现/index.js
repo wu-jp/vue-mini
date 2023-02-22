@@ -43,12 +43,22 @@ function trigger(target, key) {
   if (!depsMap) return
 
   const effects = depsMap.get(key)
+  const effectsToRun = new Set()
 
-  // effects && effects.forEach(fn => fn())
+  effects && effects.forEach(effectFn => {
+    // 如果 trigger 触发执行的副作用函数和与当前执行的副作用函数相同，则不触发
+    if (effectFn !== activeEffect) {
+      effectsToRun.add(effectFn)
+    }
+  })
 
-  const effectsToRun = new Set(effects)
   effectsToRun.forEach(effectFn => {
-    return effectFn()
+    // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
+    if (effectFn.options.scheduler) {
+      effectFn.options.scheduler(effectFn)
+    } else {
+      effectFn()
+    }
   })
 }
 
@@ -56,7 +66,7 @@ let activeEffect
 const effectStack = [] // 栈
 
 // effect 函数用于注册副作用函数，将副作用函数 fn 赋值给 activeEffect
-function effect(fn) {
+function effect(fn, options = {}) {
   const effectFn = () => {
     // 清除
     cleanup(effectFn)
@@ -69,6 +79,8 @@ function effect(fn) {
     effectStack.pop()
     activeEffect = effectStack[effectStack.length - 1]
   }
+  // 将 options 挂载到 effectFn 上
+  effectFn.options = options
   effectFn.deps = []
   effectFn()
 }
@@ -82,6 +94,28 @@ function cleanup(effectFn) {
   }
 
   effectFn.deps.length = 0
+}
+
+// 定义一个任务队列
+const jobQueue = new Set()
+// 使用 Promise.resolve() 创建一个promise实例，我们用它将一个任务添加到微队列
+const p = Promise.resolve()
+// 一个标识代表是否在刷新队列
+let isFlushing = false
+function flushJob() {
+  // 如果正在刷新，则什么都不做
+  if (isFlushing) return
+
+  // 代表正在刷新
+  isFlushing = true
+
+  // 在微任务队列中刷新 jobQueue 任务
+  p.then(() => {
+    jobQueue.forEach(job => job())
+  }).finally(() => {
+    // 结束后重置 isFlusing
+    isFlushing = false
+  })
 }
 
 effect(() => {
