@@ -108,6 +108,8 @@ function cleanup(effectFn) {
   effectFn.deps.length = 0
 }
 
+
+// TODO 这里是处理computed的
 // 定义一个任务队列
 const jobQueue = new Set()
 // 使用 Promise.resolve() 创建一个promise实例，我们用它将一个任务添加到微队列
@@ -153,6 +155,8 @@ function traverse(value, seen = new Set()) {
   return value
 }
 
+
+// TODO 这里是处理watch的
 function watch(source, cb) {
   let getter
   if (typeof source === 'function') {

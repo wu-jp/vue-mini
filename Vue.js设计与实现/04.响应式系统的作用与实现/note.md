@@ -957,7 +957,7 @@ function effect(fn, options = {}) {
     effectFn()
   }
   // 将副作用函数作为返回值
-  return effectFn()
+  return effectFn
 }
 ```
 
@@ -1096,9 +1096,12 @@ function computed(getter) {
   const effectFn = effect(getter, {
     lazy: true,
     scheduler() {
-      dirty = true
-      // 当计算属性依赖的响应式数据发生变化时，手动调用 trigger 函数触发响应
-      trigger(obj, 'value')
+      if(!dirty) {
+        dirty = true
+        // 当计算属性依赖的响应式数据发生变化时，手动调用 trigger 函数触发响应
+        trigger(obj, 'value')
+      }
+
     }
   })
 
