@@ -29,13 +29,26 @@ setTimeout(() => {
   p.foo.bar++
 }, 5000) */
 
+/* const obj = {}
+const arr = reactive([obj])
+console.log(arr.includes(arr[0])) // true */
 
-const arr = reactive(['foo'])
 
+/* const obj = {}
+const arr = reactive([obj])
+console.log(arr.includes(obj)) // true */
+
+const arr = reactive([])
+
+// 第一个副作用函数
 effect(() => {
-  console.log(arr[0])
+  arr.push('a')
 })
 
-arr.length = 0
 
-
+/* // 第二个副作用函数
+effect(() => {
+  arr.push(1)
+})
+ */
+console.log('arr', arr)

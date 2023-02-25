@@ -71,9 +71,9 @@ function cleanup(effectFn) {
   effectFn.deps.length = 0
 }
 
-
-export function track(target, key) {
-  if (!activeEffect) return target[key]
+// 新增一个参数，表示是否追踪，即是否收集副作用函数，默认为 true 表示追踪
+export function track(target, key, isShouldTrack = true) {
+  if (!activeEffect || !isShouldTrack) return target[key]
 
   let depsMap = bucket.get(target)
   if (!depsMap) {
@@ -91,7 +91,7 @@ export function track(target, key) {
 }
 
 // 为 trigger 函数添加第四个值，即新值 newVal
-export function trigger(target, key, type, newVal) {
+export function trigger(target, key, type, newVal, ITERATE_KEY = Symbol()) {
   const depsMap = bucket.get(target)
   if (!depsMap) return
 
@@ -123,7 +123,7 @@ export function trigger(target, key, type, newVal) {
   // 非数组；只有当操作为 ‘ADD’ 或者 ‘DELETE’ 时，才触发 ITERATE_KEY 相关的依赖重新执行
   else if (type === 'ADD' || type === 'DELETE') {
     const iterateEffects = depsMap.get(ITERATE_KEY)
-    // 将于 ITERATE_KEY 相关的副作用函数也添加到 effectTORun
+    // 将于 ITERATE_KEY 相关的副作用函数也添加到 effectToRun
     iterateEffects && iterateEffects.forEach(effectFn => {
       if (effectFn !== activeEffect) {
         effectsToRun.add(effectFn)
