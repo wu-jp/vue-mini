@@ -7,7 +7,9 @@ function createRenderer(options) {
     createElement,
     insert,
     setElementText,
-    patchProps
+    patchProps,
+    createText,
+    setText,
   } = options
 
   function render(vnode, container) {
@@ -52,8 +54,28 @@ function createRenderer(options) {
       }
     } else if (typeof type === 'object') {
       // 如果n2的类型时一个对象，则它描述的是组件
-    } else if (type === 'xxx') {
-      // 处理其他类型的 vnode
+    } else if (type === Text) {
+      // 如果没有旧节点，则进行挂载
+      if (!n1) {
+        // 调用createText 函数创建文本节点
+        const el = n2.el = createText(n2.children)
+        // 将文本节点插入到容器中
+        insert(el, container)
+      } else {
+        // 说明旧节点存在，只需要使用新文本节点的文本内容更新旧文本节点即可
+        const el = n2.el = n1.el
+        if (n2.children !== n1.children) {
+          setText(el, n2.children)
+        }
+      }
+    } else if (type === Fragment) {
+      if (!n1) {
+        // 如果旧节点不存在，则只需要将 Fragment 的 children 逐个挂载即可
+        n2.children.forEach(c => patch(null, c, container))
+      } else {
+        // 如果旧节点存在，则只需要更新 Fragment 的 children 即可
+        patchChildren(n1, n2, container)
+      }
     }
   }
 
@@ -168,6 +190,12 @@ function createRenderer(options) {
    * @param {*} vnode 卸载的虚拟节点
    */
   function unmount(vnode) {
+    // 再卸载时，类型为 Fragment 的节点，需要依次卸载
+    if (vnode.type === Fragment) {
+      vnode.children.forEach(c => unmount(c))
+      return
+    }
+
     const parent = vnode.el.parentNode
     if (parent) {
       parent.removeChild(vnode)
@@ -300,6 +328,12 @@ const render = createRenderer({
       // 如果设置的值没有对应的 DOM Properties，则使用 setAttribute 函数设置属性
       el.setAttribute(key, nextValue)
     }
+  },
+  createText(text) {
+    return document.createTextNode(text)
+  },
+  setText(el, text) {
+    el.nodeValue = text
   }
 })
 

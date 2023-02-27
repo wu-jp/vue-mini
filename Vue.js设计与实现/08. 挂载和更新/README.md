@@ -769,3 +769,152 @@ function patchChildren(n1, n2, container) {
 
 ## 10. 文本节点和注释节点
 
+元素节点通过 vnode.type 来描述，是一个字符串，并且表示标签的名称。但是文本节点和注释节点没有标签名称，我们需要人为的创造唯一标识，并将其作为注释节点和文本节点的type属性值。
+
+```js
+// 文本节点的type 标识
+const Text = Symbol()
+const newVNode = {
+  type: Text,
+  children: '我是一段文本'
+}
+
+// 注释节点的 type 标识
+const Comment = Symbol()
+const newVNode = {
+  type: Commont,
+  children: '我是注释的内容'
+}
+```
+
+我们先抽离浏览器特有的API到渲染器的配置项：
+```js
+const render = createRenderer({
+  createElement(tag) {
+    // 省略代码内容
+  },
+  setElementText(el, text) {
+    // 省略代码内容
+  },
+  insert(el, parent, anchor = null) {
+    // 省略代码内容
+  },
+  patchProps(el, key, prevValue, nextValue) {
+    // 省略代码内容
+  },
+  createText(text) {
+    return document.createTextNode(text)
+  },
+  setText(el, text) {
+    el.nodeValue = text
+  }
+})
+```
+
+渲染文本内容：
+
+```js
+function patch(n1, n2, container) {
+  // 如果n1 存在，则对比 n1 和 n2 的类型
+  if (n1 && n1.type !== n2.type) {
+    // 如果新旧 vnode 的类型不同，则直接将旧 vnode 卸载
+    unmount(n1)
+    n1 = null
+  }
+
+  // 运行到这里说明，n1和n2的类型相同
+  const { type } = n2
+
+  if (typeof type === 'string') {
+    if (!n1) {
+      // n1不存在，意味着挂载，则调用 mountElement 函数完成挂载
+      mountElement(n2, container)
+    } else {
+      // n1存在，意味着补丁
+      patchElement(n1, n2)
+    }
+  } else if (typeof type === 'object') {
+    // 如果n2的类型时一个对象，则它描述的是组件
+  } else if (type === Text) {
+    // 如果没有旧节点，则进行挂载
+    if (!n1) {
+      // 调用createText 函数创建文本节点
+      const el = n2.el = createText(n2.children)
+      // 将文本节点插入到容器中
+      insert(el, container)
+    } else {
+      // 说明旧节点存在，只需要使用新文本节点的文本内容更新旧文本节点即可
+      const el = n2.el = n1.el
+      if (n2.children !== n1.children) {
+        setText(el, n2.children)
+      }
+    }
+  }
+}
+```
+
+注释节点的处理方式与文本节点的处理方式类似。不同的是，我们需要使用`document.createComment` 函数创建注释节点元素。
+
+## 11. Fragment
+
+再vue3中，支持多根节点模板，而在vue2中式不支持的。就是利用 Fragment(片段)节点来实现的。
+
+```js
+const Fragment = Symbol()
+const vnode = {
+  type: Fragment,
+  children: [
+    {type: 'li', children: 'text 1'}
+    {type: 'li', children: 'text 2'}
+    {type: 'li', children: 'text 3'}
+  ]
+}
+```
+
+当渲染器渲染 Fragment 类型的虚拟节点时，由于 Fragment 本身并不会渲染任何内容，所以渲染器只会渲染 Fragment 的子节点：
+
+```js
+function patch(n1, n2, container) {
+  if (n1 && n1.type !== n2.type) {
+    unmount(n1)
+    n1 = null
+  }
+  const { type } = n2
+
+  if (typeof type === 'string') {
+    // 省略代码内容
+  } else if (typeof type === 'object') {
+    // 省略代码内容
+  } else if (type === Text) {
+    // 省略代码内容
+  } else if(type === Fragment) {
+    if (!n1) {
+      // 如果旧节点不存在，则只需要将 Fragment 的 children 逐个挂载即可
+      n2.children.forEach(c => patch(null, c, container))
+    } else {
+      // 如果旧节点存在，则只需要更新 Fragment 的 children 即可
+      patchChildren(n1, n2, container)
+    }
+  }
+}
+```
+
+需要注意一点，unmount 函数也需要支持 Fragment 类型的虚拟节点的卸载：
+
+```js
+function unmount(vnode) {
+    // 再卸载时，类型为 Fragment 的节点，需要依次卸载
+    if (vnode.type === Fragment) {
+      vnode.children.forEach(c => unmount(c))
+      return
+    }
+
+    const parent = vnode.el.parentNode
+    if (parent) {
+      parent.removeChild(vnode)
+    }
+  }
+```
+
+当卸载 Fragment 类型的虚拟节点时，由于 Fragment 本身并不会渲染任何真实 DOM，所以只需要遍历它的 children 数组，并将其中的节点逐个卸载即可。
+
