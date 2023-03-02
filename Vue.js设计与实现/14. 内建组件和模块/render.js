@@ -62,7 +62,7 @@ export function createRenderer(options) {
       if (!n1) {
 
         // 如果该组件已经被 keepalive，则不会重新挂载它，而是会调用 _activeate 来激活它
-        if (n2.keepAlive) {
+        if (n2.KeptAlive) {
           n2.keepAliveInstance._activate(n2, container, anchor)
         } else {
           // 挂载组件

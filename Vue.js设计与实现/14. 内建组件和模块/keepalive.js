@@ -38,7 +38,7 @@ const KeepAlive = {
       const cachedVNode = cache.get(rawVNode.type)
       if (cachedVNode) {
         rawVNode.component = cachedVNode.component
-        rawVNode.KeepAlive = true
+        rawVNode.KeptAlive = true
       } else {
         cache.set(rawVNode.type, rawVNode)
       }
